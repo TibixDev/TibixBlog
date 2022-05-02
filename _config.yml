@@ -1,1 +1,6 @@
 theme: jekyll-theme-midnight
+title: Tibix's Blog
+author: TibixDev
+description: > # this means to ignore newlines until "baseurl:"
+  This blog serves the purpose of documenting my programming
+  adventures and other things I do.
