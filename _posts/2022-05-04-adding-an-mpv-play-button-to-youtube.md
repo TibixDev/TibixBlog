@@ -3,7 +3,9 @@ title: "How I added an mpv play button to YouTube"
 date: 2022-05-04
 ---
 
-# 0x01 Intro
+# How I added and mpv play button to YouTube
+---
+## 0x01 Intro
 
 Hello world!
 So, this is my first blog post. The style, structure, look, and overall feel of everything is a work in progress. Expect things to change. Also, if you have any feedback please feel free to email me at `fuloptibi03@gmail.com`.
@@ -12,17 +14,17 @@ Oftentimes I find myself copying video URL-s into my terminal to play them using
 
 This task of copying video URL-s has become extremely repetitive over the months I've been doing it, so I decided to combat this problem by trying to do something useful with my passion for programming. Thus, I decided I'd add an mpv play button to YouTube.
 
-# 0x02 How?
+## 0x02 How?
 
 Actually, this was my first question when I started thinking about this problem: "*how?*". The only solution I could come up with for having some interaction between the browser and the "outside apps" was to make a custom protocol handler/URI scheme. The notion "custom protocol handler" might sound a bit intimidating at first, but it's actually quite simple when we break it down. So, your usual link starts with `https://`, which standards for `Hypertext Transfer Protocol Secure`. Notice how it has the keyword "protocol" in it? The HTTPS protocol is automatically opened and handled in your browser, as expected. Well, it turns out there are many other protocols, which all serve different purposes. For example, the `mailto://address@mail.com` protocol as you could've guessed opens up your mail client with the email address `address@mail.com` in the receiver field, or `calc://` which opens up the calculator in Windows. What's really cool is that you can also register your own protocols that have their own logic. This is exactly what we're going to leverage here to get our browser to open up mpv. If you feel like you would like to read up more on this topic, you can read [this](https://ldapwiki.com/wiki/Custom%20URI%20scheme) article.
 
 As a fun fact, the first time I did a deep-dive into protocols was when I was doing penetration testing for a random game back in 2019. It turns out protocols are not only useful for the users, but also for the attackers. I've stumbled upon many interesting writeups back then, such as this [Origin Remote Code Execution Vulnerability](https://zero.lol/posts/2019-05-22-fun-with-uri-handlers/). I think that this topic in in of itself is so long and intriguing that it could use a separate blog post, so in the future I **might** publish a separate blog post about protocol handler vulnerabilities.
 
-# 0x03 How a protocol-handler-sandwich is made
+## 0x03 How a protocol-handler-sandwich is made
 
 So, we want to register our own protocol handler. Well, how do we do that? This is the part where it actually gets complicated. Sadly there's no universal method. Windows, Mac, and Linux all have different ways of registering protocol handlers. In this blog post we'll be focusing on the Linux side of things since that's what I'm using on a daily basis, but it's not impossible that at a later date Windows will be included in this blog post as a late update, or at least in the [repository](https://github.com/TibixDev/MPVPlay) of the project if someone (or me) gets enough motivation to work on it.
 
-Registering custom protocol handlers in Linux is actually not that complicated if your distribution uses `xdg-open` for handling them. Mine (Manjaro) does, and so should most other popular distros, so ideally this will work for most people. You need to make a `.desktop` file under `~/.local/share/applications/`. It's interesting, but these `.desktop` files are also used like traditional shortcuts in Linux, so your protocol handler be visible under apps by default.
+Registering custom protocol handlers in Linux is actually not that complicated if your distribution uses `xdg-open` for handling them. Mine (Manjaro) does, and so should most other popular distros, so ideally this will work for most people. You need to make a `.desktop` file under `~/.local/share/applications/`. As a fun fact, these `.desktop` files are also used like traditional shortcuts in Linux, so your protocol handler be visible under apps by default.
 
 You need to create a file like so:
 ```
@@ -38,7 +40,7 @@ Now that you've made this file you need to register it for it to be able to hand
 
 I used this exact method to make my custom protocol handler, with some small modifications such as adding an Icon, but other than this it's exactly the same.
 
-# 0x04 Obscure bugs always lurk in the darkness
+## 0x04 Obscure bugs always lurk in the darkness
 
 We've arrived at the point where we need to implement the logic of our protocol hander. This is where things went south for me, *really* quickly. So, the argument can be easily obtained with `%u`. I thought I'd have an extremely easy task next. I'd just use `mpv %u` as the `Exec` parameter, mpv and yt-dlp should do the rest automatically and I'd have videos playing in mpv in no time. Well, that's where I was very wrong. What I'm about to cover here only spans a few paragraphs, however it took me multiple days to figure out the issues that followed. And trust me, there were many.
 
@@ -54,7 +56,7 @@ At this point I also decided that I wanted the entire `Exec` to be a single line
 
 So the final `Exec` command at that time was, *lo and behold*: `Exec=sh -c 'export LD_PRELOAD=/usr/lib/libvulkan.so.1; konsole -e /bin/bash --rcfile <(arg=%u; mpv "https:${arg:11}")'`. Amazing, isn't it? The `sh -c` is needed because for some reason nothing appears or executes without it. `konsole -e binary --rcfile args` is just executing a binary with the specified `args`, in this case `/bin/bash` which is the Bash interpreter. The latter part simply explained takes the string `https:` and adds the argument to it, but without the first 11 characters. which contain the `mpv://` part, and the URL. I will explain why I added the `https:` part myself later. This command already looks terrible, but it's about to get alot worse, so buckle up. 
 
-# 0x05 There's always that other browser
+## 0x05 There's always that other browser
 
 Now we'll skip a bit ahead in time to a point where the project was done, but nobody had tested it in Firefox. We skip here because this is the last part that still relates to Bash and I feel like it'll flow better. I tested the protocol handler in Firefox because some of my friends use that, aaaand it didn't work. Time to investigate!
 
@@ -62,7 +64,7 @@ I first learned that different browsers submit URL arguments differently, some u
 
 In the end, this is the final command: `bash -c 'export LD_PRELOAD=/usr/lib/libvulkan.so.1; arg=$0; arg=${arg/"https//"/"https://"}; arg=$(echo $arg | tr -d "'"'"'"); mpv "${arg:6}"' "%u"`. It's similar in some ways to the previous one. We no longer execute Konsole since it's unnecessary, we can just execute the Bash interpreter directly. Again, we preload the Vulkan library because we need to, then comes this part: `arg=${arg/"https//"/"https://"};`. This just replaces `https//` with `https://` when it can, otherwise does nothing. Pretty weird syntax but it works. This is much cleaner than my previous approach and will always work. The next part (`arg=$(echo $arg | tr -d "'"'"'");`) removes the single quotes around a string. See the issue is that the `Exec` already includes a single quote, so including another one before the end would break the command. The way to *escape* a single quote in Bash is actually quite crazy: `"'"'"'"`. Yes, **this** abomination is how you escape a single quote. Thanks to that one person on StackOverflow who came up with this, I sadly can't find the post anymore. The last part is not really different from our previous attempt, it's just that now we remove less characters because we only need `mpv://` removed. The last `%u` part only supplies the argument to Bash. Aaaand, that's it. We have a fully functioning YouTube Video URL opener protocol which opens mpv handler. That was a mouthful.
 
-# 0x06 The button
+## 0x06 The button
 
 Now that I had a perfectly working protocol handler, it was time to work on actual button which was originally mentioned in the article title aswell. *(It took a while to get to this point didn't?)*
 
@@ -188,11 +190,11 @@ This yields us a beautiful button which is not exactly centered but it'll do:
 Clicking the button shows a little waiting animation upon which mpv will start and the play the video accordingly. We did it!
 ![mpv playing a video](https://i.imgur.com/cXjxsfQ.png)
 
-If you're interested in trying out this little project yourself, or contribute to it, feel see [this](https://github.com/TibixDev/MPVPlay) repository.
+If you're interested in trying out this little project yourself, or contributing to it, feel see [this](https://github.com/TibixDev/MPVPlay) repository.
 
-# 0x07 Conclusion
+## 0x07 Conclusion
 All in all, this project was really fun to work on, albeit a bit annoying at times. I guess the stereotype of a programmer preferring to take a week to automate a task that takes 10 seconds at most is true afterall.
 
-If you're still reading this, thank you for coming along on this journey. I hope you enjoyed it!
+If you're still reading this, thank you for coming along with me on this journey. I hope you enjoyed it!
 
 *Last edit: 2022/05/04*
