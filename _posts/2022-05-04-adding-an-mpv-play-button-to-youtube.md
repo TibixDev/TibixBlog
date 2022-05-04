@@ -3,7 +3,7 @@ title: "How I added an mpv play button to YouTube"
 date: 2022-05-04
 ---
 
-# How I added and mpv play button to YouTube
+# How I added an mpv play button to YouTube
 ---
 ## 0x01 Intro
 
